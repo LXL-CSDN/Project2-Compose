@@ -1,0 +1,46 @@
+version: "3.8"
+
+# Project2-Compose: Jenkins + Docker-in-Docker (DinD)
+# - DinD Provides 2376 TLS Docker daemon for Jenkins to remotely build images
+# - Jenkins Use DOCKER_HOST to point to DinD and mount the TLS client certificate
+# - Named volumes: jenkins-data (Jenkins home directory), docker-certs-* (TLS certificates)
+# Security items: Disable anonymous access and run pipelines using non-administrator accounts
+
+services:
+  docker:
+    image: docker:dind
+    container_name: dind
+    privileged: true                 # allow Docker-in-Docker
+    restart: unless-stopped
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs    # Automatically generate TLS certificates
+    volumes:
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+    ports:
+      - "2376:2376"                  # Only for intranet use, compose defaults to the same network and can be directly accessed
+
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    user: root                        # Easy to install packages and mount docker CLI
+    depends_on:
+      - docker
+    restart: unless-stopped
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    ports:
+      - "8080:8080"                  # Jenkins Web
+      - "50000:50000"                # JNLP
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - docker-certs-client:/certs/client:ro
+      # Expose the host docker CLI to the Jenkins container (with DOCKER_HOST pointing to DinD)
+      - /usr/bin/docker:/usr/bin/docker:ro
+
+volumes:
+  jenkins-data:
+  docker-certs-ca:
+  docker-certs-client:
