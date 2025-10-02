@@ -17,11 +17,13 @@ services:
     volumes:
       - docker-certs-ca:/certs/ca
       - docker-certs-client:/certs/client
-    ports:
-      - "2376:2376"                  # Only for intranet use, compose defaults to the same network and can be directly accessed
+      - jenkins-data:/var/jenkins_home
+    networks:
+      - jenkins
 
   jenkins:
     image: jenkins/jenkins:lts-jdk11
+    privileged: true
     container_name: jenkins
     user: root                        # Easy to install packages and mount docker CLI
     depends_on:
@@ -35,12 +37,26 @@ services:
       - "8080:8080"                  # Jenkins Web
       - "50000:50000"                # JNLP
     volumes:
-      - /var/jenkins_home/workspace:/var/jenkins_home/workspace:rw
+      - jenkins-data:/var/jenkins_home
       - docker-certs-client:/certs/client:ro
-      # Expose the host docker CLI to the Jenkins container (with DOCKER_HOST pointing to DinD)
-      - /usr/bin/docker:/usr/bin/docker:ro
+    networks:
+      - jenkins
+    command: >
+      bash -c "
+      apt-get update &&
+      apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release &&
+      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg &&
+      echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bullseye stable' | tee /etc/apt/sources.list.d/docker.list > /dev/null &&
+      apt-get update &&
+      apt-get install -y docker-ce-cli &&
+      /usr/local/bin/jenkins.sh
+      "
 
 volumes:
   jenkins-data:
   docker-certs-ca:
   docker-certs-client:
+
+networks:
+  jenkins:
+    driver: bridge
